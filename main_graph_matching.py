@@ -8,6 +8,8 @@ import torch.nn as nn
 from torchvision.utils import save_image
 from utils import get_loops, get_dataset, get_network, get_eval_pool, evaluate_synset, get_daparam, match_loss, get_time, TensorDataset, epoch, DiffAugment, ParamDiffAug
 
+import pdb
+
 
 parser = argparse.ArgumentParser(description='Parameter Processing')
 parser.add_argument('--dataset', type=str, default='CIFAR10', help='dataset')
@@ -94,5 +96,36 @@ for exp in range(args.num_exp):
            image_syn.data[c*args.ipc:(c+1)*args.ipc] = get_images(c, args.ipc).detach().data
     else:
         print('initialize synthetic data from random noise')
+    ''' Train synthetic data '''
+    net = get_network(args.model, channel, num_classes, im_size).to(args.device) # get a random model
+    net.train()
+    for param in list(net.parameters()):
+        param.requires_grad = False
 
+        embed = net.module.embed if torch.cuda.device_count() > 1 else net.embed # for GPU parallel
+        for c in range(num_classes):
+            img_real = get_images(c, args.batch_real)
+            img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
+            loss_avg = 0
+            if args.dsa:
+                       seed = int(time.time() * 1000) % 100000
+                       img_real = DiffAugment(img_real, args.dsa_strategy, seed=seed, param=args.dsa_param)
+                       img_syn = DiffAugment(img_syn, args.dsa_strategy, seed=seed, param=args.dsa_param)
 
+            output_real = embed(img_real).detach()
+            output_syn = embed(img_syn)
+            pdb.set_trace() 
+
+            ''' update synthetic data '''
+            if 'BN' not in args.model: # for ConvNet
+                loss = torch.tensor(0.0).to(args.device)
+                for c in range(num_classes):
+                    img_real = get_images(c, args.batch_real)
+                    img_syn = image_syn[c*args.ipc:(c+1)*args.ipc].reshape((args.ipc, channel, im_size[0], im_size[1]))
+    
+    #''' training '''
+    optimizer_img = torch.optim.SGD([image_syn, ], lr=args.lr_img, momentum=0.5) # optimizer_img for synthetic data
+    #optimizer_img.zero_grad()
+    #print('%s training begins'%get_time())1
+   
+    #for it in range()
